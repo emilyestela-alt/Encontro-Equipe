@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador de Eventos Colaborativos</title>
+    <!-- Tailwind CSS para o Design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Babel para compilar JSX no navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Mapa de Módulos (Importmap) Atualizado -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+          "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+          "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js",
+          "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"
+        }
+      }
+    </script>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { initializeApp } from 'firebase/app';
+        import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc, serverTimestamp } from 'firebase/firestore';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+
+        // Ícones embutidos para não depender de pacotes externos
+        const PlusCircle = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>;
+        const Trash2 = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>;
+        const Edit2 = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>;
+        const CheckCircle2 = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>;
+        const HeartHandshake = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 15v3.5"/><path d="M9 11v.1"/><path d="M15 11v.1"/></svg>;
+        const Sparkles = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
+        const Loader2 = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className + " animate-spin"}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>;
+        const Share2 = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>;
+        const Calendar = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+        const ArrowLeft = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
+        const Megaphone = ({ size = 24, className = "" }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyC3ctGLZBUBXZDeiEmSgo0FR1h_rMyKUWI",
+            authDomain: "encontro-junino.firebaseapp.com",
+            projectId: "encontro-junino",
+            storageBucket: "encontro-junino.firebasestorage.app",
+            messagingSenderId: "415132459817",
+            appId: "1:415132459817:web:97ecc87cddeac83c864d38"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const GLOBAL_APP_ID = 'encontro-junino-app';
+
+        const THEMES = {
+          arraia: { name: 'Arraiá / Festa Junina', icon: '🌽', primary: 'orange', bg: 'bg-orange-600', text: 'text-orange-600', lightBg: 'bg-orange-50', border: 'border-orange-500', hover: 'hover:bg-orange-700' },
+          churrasco: { name: 'Churrasco da Equipe', icon: '🥩', primary: 'red', bg: 'bg-red-600', text: 'text-red-600', lightBg: 'bg-red-50', border: 'border-red-500', hover: 'hover:bg-red-700' },
+          natal: { name: 'Festa de Fim de Ano', icon: '🎄', primary: 'emerald', bg: 'bg-emerald-600', text: 'text-emerald-600', lightBg: 'bg-emerald-50', border: 'border-emerald-500', hover: 'hover:bg-emerald-700' },
+          casual: { name: 'Café / Confraternização', icon: '☕', primary: 'blue', bg: 'bg-blue-600', text: 'text-blue-600', lightBg: 'bg-blue-50', border: 'border-blue-500', hover: 'hover:bg-blue-700' }
+        };
+
+        function App() {
+          const [user, setUser] = useState(null);
+          const [currentEventId, setCurrentEventId] = useState(null);
+          const [eventData, setEventData] = useState(null);
+          
+          const [menuItems, setMenuItems] = useState([]);
+          const [logistics, setLogistics] = useState([]);
+          const [notices, setNotices] = useState([]);
+          
+          const [activeTab, setActiveTab] = useState('comidas');
+          const [isAddingNewItem, setIsAddingNewItem] = useState(false);
+          const [newItemForm, setNewItemForm] = useState({ category: 'Salgados', name: '', qty: '' });
+          const [itemToDelete, setItemToDelete] = useState(null);
+          const [isAddingNotice, setIsAddingNotice] = useState(false);
+          const [newNoticeForm, setNewNoticeForm] = useState({ type: 'aviso', title: '', content: '' });
+          const [aiLoading, setAiLoading] = useState(false);
+          const [aiRecipeResult, setAiRecipeResult] = useState(null);
+          const [copiedLink, setCopiedLink] = useState(false);
+
+          const [newEventForm, setNewEventForm] = useState({ title: '', theme: 'arraia', noticeType: 'campanha', noticeText: '' });
+
+          useEffect(() => {
+            signInAnonymously(auth).catch(console.error);
+            const unsubscribe = onAuthStateChanged(auth, setUser);
+            return () => unsubscribe();
+          }, []);
+
+          useEffect(() => {
+            const params = new URLSearchParams(window.location.search);
+            const eventParam = params.get('evento');
+            if (eventParam) setCurrentEventId(eventParam);
+          }, []);
+
+          useEffect(() => {
+            if (!user || !currentEventId) return;
+
+            const eventDocRef = doc(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', 'events', currentEventId);
+            const unsubEvent = onSnapshot(eventDocRef, (docSnap) => {
+              if (docSnap.exists()) {
+                setEventData(docSnap.data());
+              } else {
+                alert("Evento não encontrado!");
+                goToHome();
+              }
+            });
+
+            const itemsRef = collection(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${currentEventId}_items`);
+            const unsubItems = onSnapshot(itemsRef, (snapshot) => {
+              const items = [];
+              snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+              setMenuItems(items);
+            });
+
+            const logRef = collection(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${currentEventId}_logistics`);
+            const unsubLog = onSnapshot(logRef, (snapshot) => {
+              const logs = [];
+              snapshot.forEach(doc => logs.push({ id: doc.id, ...doc.data() }));
+              setLogistics(logs);
+            });
+
+            const noticesRef = collection(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${currentEventId}_notices`);
+            const unsubNotices = onSnapshot(noticesRef, (snapshot) => {
+              const fetchedNotices = [];
+              snapshot.forEach(doc => fetchedNotices.push({ id: doc.id, ...doc.data() }));
+              setNotices(fetchedNotices);
+            });
+
+            return () => { unsubEvent(); unsubItems(); unsubLog(); unsubNotices(); };
+          }, [user, currentEventId]);
+
+          const goToHome = () => {
+            window.history.pushState({}, '', window.location.pathname);
+            setCurrentEventId(null);
+            setEventData(null);
+          };
+
+          const handleCreateEvent = async (e) => {
+            e.preventDefault();
+            if (!user) return;
+            const newId = Math.random().toString(36).substring(2, 9);
+            try {
+              await setDoc(doc(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', 'events', newId), {
+                title: newEventForm.title, theme: newEventForm.theme, createdAt: serverTimestamp()
+              });
+
+              const logRef = collection(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${newId}_logistics`);
+              await setDoc(doc(logRef), { task: 'Organizar a Playlist / Música', person: '' });
+              await setDoc(doc(logRef), { task: 'Sacos de lixo e Limpeza no final', person: '' });
+              await setDoc(doc(logRef), { task: 'Decoração do ambiente', person: '' });
+
+              if (newEventForm.noticeText.trim()) {
+                const noticesRef = collection(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${newId}_notices`);
+                const title = newEventForm.noticeType === 'campanha' ? 'Campanha do Bem' : 'Aviso Importante';
+                await setDoc(doc(noticesRef), { type: newEventForm.noticeType, title: title, content: newEventForm.noticeText, createdAt: serverTimestamp() });
+              }
+
+              window.history.pushState({}, '', `?evento=${newId}`);
+              setCurrentEventId(newId);
+            } catch (err) { console.error(err); }
+          };
+
+          const shareEventLink = () => {
+            navigator.clipboard.writeText(window.location.href);
+            setCopiedLink(true);
+            setTimeout(() => setCopiedLink(false), 2000);
+          };
+
+          const handleClaimItem = async (itemId, type, personName, restrictions = '') => {
+            if (!user) return;
+            const collectionName = type === 'comida' ? `event_${currentEventId}_items` : `event_${currentEventId}_logistics`;
+            await setDoc(doc(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', collectionName, itemId), {
+              person: personName, restrictions: restrictions
+            }, { merge: true });
+          };
+
+          const handleAddNewItem = async (e) => {
+            e.preventDefault();
+            if (!user || !newItemForm.name.trim()) return;
+            const itemsRef = collection(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${currentEventId}_items`);
+            await setDoc(doc(itemsRef, Math.random().toString(36).substring(2, 9)), {
+              category: newItemForm.category, name: newItemForm.name, qty: newItemForm.qty, person: '', restrictions: '', createdAt: serverTimestamp()
+            });
+            setIsAddingNewItem(false);
+            setNewItemForm({ category: 'Salgados', name: '', qty: '' });
+          };
+
+          const confirmDelete = async () => {
+            if (!user || !itemToDelete) return;
+            await deleteDoc(doc(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${currentEventId}_items`, itemToDelete.id));
+            setItemToDelete(null);
+          };
+
+          const handleAddNewNotice = async (e) => {
+            e.preventDefault();
+            if (!user || !newNoticeForm.title.trim()) return;
+            const noticesRef = collection(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${currentEventId}_notices`);
+            await setDoc(doc(noticesRef), {
+              type: newNoticeForm.type, title: newNoticeForm.title, content: newNoticeForm.content, createdAt: serverTimestamp()
+            });
+            setIsAddingNotice(false);
+            setNewNoticeForm({ type: 'aviso', title: '', content: '' });
+          };
+
+          const handleDeleteNotice = async (noticeId) => {
+            if (window.confirm("Apagar este aviso?")) {
+              await deleteDoc(doc(db, 'artifacts', GLOBAL_APP_ID, 'public', 'data', `event_${currentEventId}_notices`, noticeId));
+            }
+          };
+
+          if (!currentEventId || !eventData) {
+            return (
+              <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                <div className="bg-white max-w-lg w-full rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+                  <div className="bg-indigo-600 p-8 text-center text-white">
+                    <h1 className="text-3xl font-black mb-2 flex items-center justify-center gap-2"><Calendar size={32}/> Criar Evento</h1>
+                    <p className="text-indigo-100">Organize confraternizações em segundos!</p>
+                  </div>
+                  <div className="p-8">
+                    <form onSubmit={handleCreateEvent} className="space-y-5">
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-1.5">Nome do Evento</label>
+                        <input required type="text" value={newEventForm.title} onChange={e => setNewEventForm({...newEventForm, title: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none" placeholder="Ex: Arraiá da Equipe..." />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-1.5">Tema do Evento</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {Object.entries(THEMES).map(([key, theme]) => (
+                            <div key={key} onClick={() => setNewEventForm({...newEventForm, theme: key})} className={`cursor-pointer border-2 rounded-xl p-3 flex flex-col items-center gap-1 ${newEventForm.theme === key ? `${theme.border} ${theme.lightBg}` : 'border-gray-100 bg-gray-50'}`}>
+                              <span className="text-2xl">{theme.icon}</span>
+                              <span className="text-xs font-bold text-gray-700 text-center">{theme.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-1.5">Aviso Principal do Quadro (Opcional)</label>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <select value={newEventForm.noticeType} onChange={e => setNewEventForm({...newEventForm, noticeType: e.target.value})} className="border-2 border-gray-200 rounded-xl px-3 py-3 focus:border-indigo-500 outline-none sm:w-1/3">
+                            <option value="campanha">🎯 Arrecadação</option>
+                            <option value="aviso">📌 Aviso Geral</option>
+                          </select>
+                          <input type="text" value={newEventForm.noticeText} onChange={e => setNewEventForm({...newEventForm, noticeText: e.target.value})} className="flex-1 border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none" placeholder="Ex: Tragam roupas de banho!" />
+                        </div>
+                      </div>
+                      <button type="submit" disabled={!user} className="w-full mt-4 px-4 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2">
+                        {user ? <><PlusCircle /> Gerar Link do Evento</> : <><Loader2 className="animate-spin" /> Conectando...</>}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          const currentTheme = THEMES[eventData.theme] || THEMES.casual;
+          const categories = [...new Set(menuItems.map(item => item.category)), 'Bebidas Quentes', 'Bebidas Frias', 'Salgados', 'Doces'].filter((v, i, a) => a.indexOf(v) === i);
+
+          return (
+            <div className="min-h-screen bg-[#fcf9f2] pb-20">
+              <header className={`${currentTheme.bg} text-white py-8 px-4 shadow-md relative overflow-hidden`}>
+                <div className="max-w-4xl mx-auto relative z-10">
+                  <button onClick={goToHome} className="mb-4 flex items-center gap-1 text-sm bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full w-fit"><ArrowLeft size={16} /> Meus Eventos</button>
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                      <h1 className="text-3xl md:text-5xl font-black drop-shadow-sm flex items-center gap-3">{currentTheme.icon} {eventData.title.toUpperCase()} {currentTheme.icon}</h1>
+                      <div className="inline-flex items-center gap-2 mt-4 bg-white/20 px-4 py-2 rounded-xl border border-white/30"><span className="font-bold">Lembrete: Venha a caráter no dia!</span></div>
+                    </div>
+                    <button onClick={shareEventLink} className={`flex items-center gap-2 px-5 py-3 bg-white ${currentTheme.text} font-black rounded-xl hover:bg-gray-50 shadow-lg`}>
+                      {copiedLink ? <CheckCircle2 /> : <Share2 />} {copiedLink ? 'Copiado!' : 'Compartilhar Link'}
+                    </button>
+                  </div>
+                </div>
+              </header>
+
+              <main className="max-w-4xl mx-auto mt-[-20px] px-4 relative z-20">
+                <div className="flex bg-white rounded-2xl shadow-lg p-1.5 mb-8 gap-1 overflow-x-auto">
+                  {['comidas', 'logistica', 'avisos'].map((tab) => (
+                    <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold capitalize transition-all ${activeTab === tab ? `${currentTheme.bg} text-white` : 'text-gray-500 hover:bg-gray-100'}`}>
+                      {tab === 'comidas' ? '🍗 Comidas' : tab === 'logistica' ? '🪗 Logística' : '📌 Avisos'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ABA COMIDAS */}
+                {activeTab === 'comidas' && (
+                  <div className="space-y-8">
+                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                        <p className="text-gray-600 font-medium">O que você vai levar?</p>
+                        <button onClick={() => setIsAddingNewItem(true)} className={`flex items-center gap-2 ${currentTheme.bg} text-white px-5 py-2.5 rounded-xl font-bold`}><PlusCircle size={20} /> <span className="hidden sm:inline">Sugerir Prato</span></button>
+                    </div>
+                    {categories.map((cat) => {
+                      const itemsInCat = menuItems.filter(item => item.category === cat);
+                      if (itemsInCat.length === 0) return null;
+                      return (
+                        <div key={cat} className="mb-8">
+                          <h2 className={`text-2xl font-black ${currentTheme.text} mb-4 flex items-center gap-2`}><span className="w-8 h-1 bg-current rounded-full inline-block"></span> {cat.toUpperCase()}</h2>
+                          <div className="grid sm:grid-cols-2 gap-4">
+                            {itemsInCat.map(item => (
+                              <div key={item.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200 relative group">
+                                <button onClick={() => setItemToDelete(item)} className="absolute top-3 right-3 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
+                                <h3 className="font-bold text-xl text-gray-800 mb-1 pr-6">{item.name}</h3>
+                                <p className="text-sm text-gray-500 font-medium mb-4">Quantidade: {item.qty}</p>
+                                <div className={`p-4 rounded-xl border ${item.person ? currentTheme.lightBg + ' ' + currentTheme.border : 'bg-gray-50 border-gray-200 border-dashed'}`}>
+                                  {item.person ? (
+                                    <div className="flex justify-between items-center">
+                                      <div>
+                                        <p className={`font-black ${currentTheme.text} text-lg`}>{item.person}</p>
+                                        {item.restrictions && <span className="text-xs font-bold bg-white text-gray-600 px-2 py-1 rounded-md border border-gray-200 mt-1 block">Aviso: {item.restrictions}</span>}
+                                      </div>
+                                      <button onClick={() => handleClaimItem(item.id, 'comida', '', '')} className="text-gray-400 hover:text-red-500 bg-white p-2 rounded-lg shadow-sm"><Edit2 size={16}/></button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => { const name = window.prompt("Qual o seu nome?"); if(name) handleClaimItem(item.id, 'comida', name, window.prompt("Tem restrição alimentar? Se não, deixe em branco.")); }} className={`w-full py-2.5 ${currentTheme.bg} text-white font-bold rounded-lg shadow hover:opacity-90`}>Eu levo este!</button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ABA AVISOS */}
+                {activeTab === 'avisos' && (
+                  <div className="space-y-6">
+                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                        <p className="text-gray-600 font-medium">Mural de recados.</p>
+                        <button onClick={() => setIsAddingNotice(true)} className={`flex items-center gap-2 ${currentTheme.bg} text-white px-5 py-2.5 rounded-xl font-bold`}><PlusCircle size={20} /> <span className="hidden sm:inline">Novo Aviso</span></button>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                        {notices.map(notice => (
+                          <div key={notice.id} className={`relative p-6 rounded-3xl shadow-sm border-2 ${notice.type === 'campanha' ? 'bg-gradient-to-br from-green-50 to-emerald-100 border-green-200' : 'bg-gradient-to-br from-amber-50 to-yellow-100 border-yellow-200'}`}>
+                              <button onClick={() => handleDeleteNotice(notice.id)} className="absolute top-4 right-4 bg-white/50 p-2 rounded-full text-gray-400 hover:text-red-500"><Trash2 size={18} /></button>
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className={`p-3 rounded-2xl ${notice.type === 'campanha' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                                  {notice.type === 'campanha' ? <HeartHandshake size={28}/> : <Megaphone size={28}/>}
+                                </div>
+                                <h3 className={`font-black text-xl ${notice.type === 'campanha' ? 'text-green-800' : 'text-yellow-800'}`}>{notice.title}</h3>
+                              </div>
+                              <p className={`text-lg font-medium leading-relaxed ${notice.type === 'campanha' ? 'text-green-700' : 'text-yellow-700'}`}>{notice.content}</p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ABA LOGÍSTICA */}
+                {activeTab === 'logistica' && (
+                  <div className="space-y-6">
+                    <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-blue-100">
+                      <div className="bg-blue-600 px-6 py-6 text-white"><h2 className="text-2xl font-bold flex items-center gap-2"><CheckCircle2 /> Organização</h2></div>
+                      <div className="p-6 space-y-4">
+                        {logistics.map((item) => (
+                          <div key={item.id} className="flex flex-col sm:flex-row items-center justify-between bg-gray-50 rounded-xl p-4 shadow-sm border border-gray-100 gap-4">
+                            <h3 className="font-bold text-gray-900 text-lg flex-1 text-center sm:text-left">{item.task}</h3>
+                            <div className="w-full sm:w-auto">
+                              {item.person ? (
+                                <div className="flex items-center gap-3 bg-blue-50 px-4 py-2.5 rounded-lg border border-blue-200 justify-center">
+                                  <span className="font-bold text-blue-700">{item.person}</span>
+                                  <button onClick={() => handleClaimItem(item.id, 'logistica', '')} className="text-blue-400 hover:text-red-500"><Edit2 size={16}/></button>
+                                </div>
+                              ) : (
+                                <button onClick={() => { const name = window.prompt("Seu nome?"); handleClaimItem(item.id, 'logistica', name); }} className="w-full sm:min-w-[200px] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm">Eu ajudo!</button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </main>
+
+              {/* MODAIS */}
+              {isAddingNewItem && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
+                    <h3 className={`text-2xl font-black ${currentTheme.text} mb-6`}><PlusCircle className="inline"/> Adicionar Prato</h3>
+                    <form onSubmit={handleAddNewItem} className="space-y-4">
+                      <div><select value={newItemForm.category} onChange={e => setNewItemForm({...newItemForm, category: e.target.value})} className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:${currentTheme.border} outline-none`}>{['Salgados', 'Doces', 'Bebidas Quentes', 'Bebidas Frias'].map(cat => <option key={cat}>{cat}</option>)}</select></div>
+                      <div><input required type="text" value={newItemForm.name} onChange={e => setNewItemForm({...newItemForm, name: e.target.value})} className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:${currentTheme.border} outline-none`} placeholder="Nome da Comida" /></div>
+                      <div><input required type="text" value={newItemForm.qty} onChange={e => setNewItemForm({...newItemForm, qty: e.target.value})} className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:${currentTheme.border} outline-none`} placeholder="Quantidade (ex: 1 bolo)" /></div>
+                      <div className="flex gap-3"><button type="button" onClick={() => setIsAddingNewItem(false)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl">Cancelar</button><button type="submit" className={`flex-1 py-3 ${currentTheme.bg} text-white font-bold rounded-xl`}>Adicionar</button></div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {isAddingNotice && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
+                    <h3 className={`text-2xl font-black ${currentTheme.text} mb-6`}><Megaphone className="inline"/> Adicionar Aviso</h3>
+                    <form onSubmit={handleAddNewNotice} className="space-y-4">
+                      <div><select value={newNoticeForm.type} onChange={e => setNewNoticeForm({...newNoticeForm, type: e.target.value})} className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:${currentTheme.border} outline-none`}><option value="aviso">📌 Aviso Geral</option><option value="campanha">🎯 Campanha do Bem</option></select></div>
+                      <div><input required type="text" value={newNoticeForm.title} onChange={e => setNewNoticeForm({...newNoticeForm, title: e.target.value})} className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:${currentTheme.border} outline-none`} placeholder="Título Curto" /></div>
+                      <div><textarea required value={newNoticeForm.content} onChange={e => setNewNoticeForm({...newNoticeForm, content: e.target.value})} className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:${currentTheme.border} outline-none`} placeholder="Mensagem completa..."></textarea></div>
+                      <div className="flex gap-3"><button type="button" onClick={() => setIsAddingNotice(false)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl">Cancelar</button><button type="submit" className={`flex-1 py-3 ${currentTheme.bg} text-white font-bold rounded-xl`}>Publicar</button></div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {itemToDelete && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl">
+                    <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
+                    <h3 className="text-xl font-black mb-2">Excluir Prato?</h3>
+                    <p className="text-gray-500 mb-6">Remover "{itemToDelete.name}"?</p>
+                    <div className="flex gap-3"><button onClick={() => setItemToDelete(null)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl">Cancelar</button><button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl">Sim, Excluir</button></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
